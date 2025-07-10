@@ -1,0 +1,17 @@
+# /requirements.txt
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+requests
+openai
+motor
+loguru
+python-jose[cryptography]
+passlib[bcrypt]
+fastapi-limiter
+redis
+python-multipart
+httpx
+# For pymongo compatibility with motor
+dnspython

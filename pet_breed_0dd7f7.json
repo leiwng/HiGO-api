@@ -1,0 +1,38 @@
+# /pet_breed_0dd7f7.json
+[
+  {
+    "id": 1,
+    "name": "阿富汗猎犬",
+    "category": "狗"
+  },
+  {
+    "id": 2,
+    "name": "阿卡巴士犬",
+    "category": "狗"
+  },
+  {
+    "id": 3,
+    "name": "阿拉斯加雪橇犬",
+    "category": "狗"
+  },
+  {
+    "id": 150,
+    "name": "金毛寻回犬",
+    "category": "狗"
+  },
+  {
+    "id": 421,
+    "name": "三花猫",
+    "category": "猫"
+  },
+  {
+    "id": 422,
+    "name": "美国短毛猫",
+    "category": "猫"
+  },
+  {
+    "id": 423,
+    "name": "英国短毛猫",
+    "category": "猫"
+  }
+]
