@@ -1,4 +1,4 @@
-# /app/models/chat.py
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from enum import Enum
@@ -29,12 +29,25 @@ class ImageChatRequest(BaseModel):
     images: List[str] = Field(..., description="Base64编码的图片数组，最多5张")
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: datetime
+    metadata: dict[str, str | int | float] | None = None
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: str | None = None
+    context: dict[str, str | int | float] | None = None
+
+
 class ChatResponse(BaseModel):
     success: bool
-    data: Optional[dict] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-    detail: Optional[str] = None
+    response: str | None = None
+    conversation_id: str | None = None
+    error: str | None = None
+    metadata: dict[str, str | int | float] | None = None
 
 
 class StreamChunk(BaseModel):
@@ -42,3 +55,10 @@ class StreamChunk(BaseModel):
     text_chunk: str
     is_final: bool
     timestamp: str
+
+
+class ConversationHistory(BaseModel):
+    conversation_id: str
+    messages: list[ChatMessage]
+    created_at: datetime
+    updated_at: datetime

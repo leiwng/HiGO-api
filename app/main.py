@@ -13,6 +13,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.utils.http_client import AsyncHttpClient
+from app.services.storage.redis_service import init_redis, close_redis
 
 
 @asynccontextmanager
@@ -22,15 +23,28 @@ async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("Starting application...")
 
+    # Initialize Redis service first
+    try:
+        await init_redis()
+        logger.info("Redis service initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Redis service: {e}")
+        raise
+
     # Setup Redis for rate limiting
     try:
-        redis_connection = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", encoding="utf-8", decode_responses=True)
+        redis_connection = redis.from_url(
+            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
+            encoding="utf-8",
+            decode_responses=True
+        )
         await FastAPILimiter.init(redis_connection)
         logger.info("Successfully connected to Redis and initialized FastAPILimiter.")
     except Exception as e:
         logger.error(f"Could not connect to Redis or initialize FastAPILimiter: {e}")
-        # Depending on the use case, you might want to exit the application
-        # if Redis is essential. For now, we just log the error.
+        # 如果 Redis 是必需的，您可能希望在此处退出应用程序
+        # 现在我们只记录错误
+        raise
 
     # Setup shared HTTP client
     app.state.http_client = AsyncHttpClient()
@@ -40,8 +54,18 @@ async def lifespan(app: FastAPI):
 
     # --- Shutdown ---
     logger.info("Shutting down application...")
+
+    # Close HTTP client
     await app.state.http_client.close()
     logger.info("Async HTTP client closed.")
+
+    # Close Redis service
+    try:
+        await close_redis()
+        logger.info("Redis service closed successfully.")
+    except Exception as e:
+        logger.error(f"Error closing Redis service: {e}")
+
     logger.info("Application shutdown complete.")
 
 
@@ -60,13 +84,13 @@ async def log_requests(request: Request, call_next):
     request_id = f"{request.client.host}:{request.client.port}-{time.time_ns()}"
     logger.info(f"rid={request_id} start request path={request.url.path} method={request.method}")
     start_time = time.time()
-    
+
     response = await call_next(request)
-    
+
     process_time = (time.time() - start_time) * 1000
     formatted_process_time = f'{process_time:.2f}'
     logger.info(f"rid={request_id} completed_in={formatted_process_time}ms status_code={response.status_code}")
-    
+
     return response
 
 # --- Exception Handlers ---
@@ -108,10 +132,8 @@ async def get_http_client(request: Request) -> AsyncHttpClient:
 from app.utils import http_client as http_client_module
 http_client_module.AsyncHttpClient = get_http_client
 
-
 # --- API Router ---
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
 
 @app.get("/", tags=["Root"])
 async def read_root():

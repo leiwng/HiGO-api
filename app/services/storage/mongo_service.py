@@ -1,16 +1,21 @@
 # /app/services/storage/mongo_service.py
+import logging
 from fastapi import Depends
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from loguru import logger
 from typing import List, Dict
+from datetime import datetime
 
 from app.core.config import Settings, get_settings
 
+logger = logging.getLogger(__name__)
+
 class MongoService:
     def __init__(self, settings: Settings = Depends(get_settings)):
-        self.client = AsyncIOMotorClient(settings.MONGO_CONNECTION_STRING)
-        self.db = self.client[settings.MONGO_DB_NAME]
+        self.client = AsyncIOMotorClient(settings.MONGODB_URL)
+        self.db = self.client[settings.MONGODB_DB_NAME]
         self.conversations = self.db["conversations"]
+        self.users = self.db["users"]
         logger.info("MongoDB connection established.")
 
     async def get_conversation_history(self, conversation_id: str, limit: int = 10) -> List[Dict]:
@@ -21,33 +26,94 @@ class MongoService:
         cursor = self.conversations.find(
             {"conversation_id": conversation_id}
         ).sort("timestamp", -1).limit(limit)
-        
+
         history = await cursor.to_list(length=limit)
         history.reverse() # To get chronological order
-        
+
         # Format to match LangChain's expected message format
         formatted_history = [
             {"role": msg["role"], "content": msg["content"]} for msg in history
         ]
         return formatted_history
 
-    async def save_message(self, conversation_id: str, role: str, content: str):
-        """
-        Saves a message to the conversation history.
-        """
-        from datetime import datetime
-        message = {
-            "conversation_id": conversation_id,
-            "role": role, # "user" or "assistant"
-            "content": content,
-            "timestamp": datetime.utcnow()
-        }
-        await self.conversations.insert_one(message)
-        logger.info(f"Saved message for conversation_id: {conversation_id}")
+    async def save_message(self, conversation_id: str, role: str, content: str) -> str | None:
+        """保存聊天消息"""
+        try:
+            message_doc = {
+                "conversation_id": conversation_id,
+                "role": role,
+                "content": content,
+                "timestamp": datetime.utcnow(),
+                "metadata": {}
+            }
+            result = await self.conversations.insert_one(message_doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error saving message: {e}")
+            return None
 
-    def get_db(self) -> AsyncIOMotorDatabase:
-        return self.db
+    async def find_one(self, collection_name: str, filter_dict: dict) -> dict | None:
+        """查找单个文档"""
+        try:
+            collection = self.db[collection_name]
+            result = await collection.find_one(filter_dict)
+            return result
+        except Exception as e:
+            logger.error(f"MongoDB find_one error in {collection_name}: {e}")
+            return None
+
+    async def insert_one(self, collection_name: str, document: dict) -> str | None:
+        """插入单个文档"""
+        try:
+            collection = self.db[collection_name]
+            result = await collection.insert_one(document)
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"MongoDB insert_one error in {collection_name}: {e}")
+            return None
+
+    async def update_one(self, collection_name: str, filter_dict: dict, update_dict: dict) -> bool:
+        """更新单个文档"""
+        try:
+            collection = self.db[collection_name]
+            result = await collection.update_one(filter_dict, {"$set": update_dict})
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"MongoDB update_one error in {collection_name}: {e}")
+            return False
+
+    async def delete_one(self, collection_name: str, filter_dict: dict) -> bool:
+        """删除单个文档"""
+        try:
+            collection = self.db[collection_name]
+            result = await collection.delete_one(filter_dict)
+            return result.deleted_count > 0
+        except Exception as e:
+            logger.error(f"MongoDB delete_one error in {collection_name}: {e}")
+            return False
+
+    def get_current_time(self) -> datetime:
+        """获取当前时间"""
+        return datetime.utcnow()
+
+    async def close(self):
+        """关闭连接"""
+        self.client.close()
+        logger.info("MongoDB connection closed.")
+
+# 全局MongoDB服务实例
+mongo_service = MongoService()
 
 # Dependency to get the database instance
 def get_mongo_db(mongo_service: MongoService = Depends()) -> AsyncIOMotorDatabase:
     return mongo_service.get_db()
+
+# 生命周期管理
+async def init_mongo():
+    """初始化MongoDB连接"""
+    # MongoDB连接在实例化时就建立了
+    logger.info("MongoDB service initialized")
+
+async def close_mongo():
+    """关闭MongoDB连接"""
+    await mongo_service.close()

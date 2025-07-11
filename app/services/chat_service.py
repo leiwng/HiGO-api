@@ -5,12 +5,13 @@ from datetime import datetime
 from fastapi import Depends, HTTPException
 from loguru import logger
 
-from app.models.chat import TextChatRequest, ImageChatRequest, StreamChunk
+from app.models.chat import TextChatRequest, ImageChatRequest, StreamChunk, ChatRequest, ChatResponse, ChatMessage
 from app.models.user import User
 from app.services.external.llm_service import LLMService
 from app.services.external.multimodal_service import MultiModalService
 from app.services.external.pet_info_service import PetInfoService
 from app.services.storage.mongo_service import MongoService
+from app.services.storage.redis_service import RedisService
 
 
 class ChatService:
@@ -20,11 +21,13 @@ class ChatService:
         multimodal_service: MultiModalService = Depends(),
         pet_info_service: PetInfoService = Depends(),
         mongo_service: MongoService = Depends(),
+        redis_service: RedisService = Depends(),
     ):
         self.llm_service = llm_service
         self.multimodal_service = multimodal_service
         self.pet_info_service = pet_info_service
         self.mongo_service = mongo_service
+        self.redis_service = redis_service
 
     async def process_text_chat(self, request: TextChatRequest, user: User, request_id: str):
         """
@@ -48,7 +51,7 @@ class ChatService:
 
             # 3. 构建Prompt
             prompt = self._build_prompt(request.question, pet_info, history, rag_knowledge)
-            
+
             # 4. 调用LLM
             logger.info(f"Request ID: {request_id} - Calling LLM for conversation: {request.conversation_id}")
             llm_stream = self.llm_service.stream_chat(prompt)
@@ -57,7 +60,7 @@ class ChatService:
             async for chunk in llm_stream:
                 content_piece = chunk.choices[0].delta.content or ""
                 full_response_content += content_piece
-                
+
                 stream_chunk = StreamChunk(
                     conversation_id=request.conversation_id,
                     text_chunk=content_piece,
@@ -123,7 +126,7 @@ class ChatService:
             ]
             analysis_results = await asyncio.gather(*image_analysis_tasks)
             image_descriptions = "\n".join([res['data'][0]['text'] for res in analysis_results if res and res.get('data')])
-            
+
             if not image_descriptions:
                 raise Exception("Failed to analyze images or got empty results.")
             logger.info(f"Request ID: {request_id} - Image analysis complete.")
@@ -142,7 +145,7 @@ class ChatService:
             async for chunk in llm_stream:
                 content_piece = chunk.choices[0].delta.content or ""
                 full_response_content += content_piece
-                
+
                 stream_chunk = StreamChunk(
                     conversation_id=request.conversation_id,
                     text_chunk=content_piece,
@@ -179,6 +182,127 @@ class ChatService:
                 await self.mongo_service.save_message(request.conversation_id, "assistant", full_response_content)
                 logger.info(f"Request ID: {request_id} - Saved conversation history for: {request.conversation_id}")
 
+    async def process_chat_request(self, request: ChatRequest) -> ChatResponse:
+        """处理聊天请求"""
+        try:
+            # 生成对话ID（如果没有提供）
+            conversation_id = request.conversation_id or self._generate_conversation_id()
+
+            # 异步获取对话历史
+            history_task = self.mongo_service.get_conversation_history(conversation_id)
+
+            # 保存用户消息
+            await self.mongo_service.save_message(conversation_id, "user", request.question)
+
+            # 获取历史对话
+            history = await history_task
+
+            # 构建对话上下文
+            context = self._build_context(history, request.question)
+
+            # 调用LLM服务
+            llm_response = await self.llm_service.generate_response(context)
+
+            # 保存助手回复
+            await self.mongo_service.save_message(conversation_id, "assistant", llm_response)
+
+            # 缓存最新对话
+            await self._cache_conversation(conversation_id)
+
+            return ChatResponse(
+                success=True,
+                response=llm_response,
+                conversation_id=conversation_id
+            )
+
+        except Exception as e:
+            return ChatResponse(
+                success=False,
+                error=str(e),
+                conversation_id=request.conversation_id
+            )
+
+    def _build_context(self, history: list[dict], current_question: str) -> str:
+        """构建对话上下文"""
+        context_parts = []
+
+        # 添加历史对话
+        for msg in history[-5:]:  # 只取最近5条
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            context_parts.append(f"{role}: {content}")
+
+        # 添加当前问题
+        context_parts.append(f"user: {current_question}")
+
+        return "\n".join(context_parts)
+
+    def _generate_conversation_id(self) -> str:
+        """生成对话ID"""
+        import uuid
+        return str(uuid.uuid4())
+
+    async def _cache_conversation(self, conversation_id: str):
+        """缓存对话历史"""
+        try:
+            # 获取最新对话历史
+            history = await self.mongo_service.get_conversation_history(conversation_id, limit=20)
+
+            # 转换为缓存格式
+            cache_messages = []
+            for msg in history:
+                cache_messages.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content"),
+                    "timestamp": msg.get("timestamp", datetime.utcnow()).isoformat()
+                })
+
+            # 缓存到Redis
+            await self.redis_service.cache_conversation_history(
+                conversation_id,
+                cache_messages,
+                max_messages=20,
+                expire_seconds=3600
+            )
+        except Exception as e:
+            # 缓存失败不影响主流程
+            pass
+
+    async def get_conversation_history(self, conversation_id: str, limit: int = 10) -> list[ChatMessage]:
+        """获取对话历史"""
+        try:
+            # 先尝试从缓存获取
+            cached_history = await self.redis_service.get_cached_conversation_history(
+                conversation_id, limit
+            )
+
+            if cached_history:
+                return [
+                    ChatMessage(
+                        role=msg["role"],
+                        content=msg["content"],
+                        timestamp=datetime.fromisoformat(msg["timestamp"]),
+                        metadata=msg.get("metadata")
+                    )
+                    for msg in cached_history
+                ]
+
+            # 从数据库获取
+            history = await self.mongo_service.get_conversation_history(conversation_id, limit)
+
+            return [
+                ChatMessage(
+                    role=msg["role"],
+                    content=msg["content"],
+                    timestamp=msg.get("timestamp", datetime.utcnow()),
+                    metadata=msg.get("metadata")
+                )
+                for msg in history
+            ]
+
+        except Exception as e:
+            return []
+
     def _rag_retrieval(self, query: str) -> str:
         """模拟RAG知识检索"""
         logger.info(f"Performing RAG retrieval for query: '{query[:50]}...'")
@@ -188,7 +312,7 @@ class ChatService:
     def _build_prompt(self, question: str, pet_info, history, rag_knowledge: str, image_descriptions: str = None) -> str:
         """构建最终的提示词"""
         history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
-        
+
         prompt = f"""你是一个专业的宠物医生。请根据以下信息，用中文回答用户的问题。
 
 [宠物信息]
