@@ -45,7 +45,7 @@ class LoginRateLimiter:
         if attempts >= self.max_attempts:
             lockout_key = f"login_lockout:{identifier}"
             lockout_until = current_time + self.lockout_seconds
-            await self.redis.set(lockout_key, lockout_until, ex=self.lockout_seconds)
+            await self.redis.set(lockout_key, str(lockout_until), ex=self.lockout_seconds)
 
     async def clear_attempts(self, identifier: str):
         """清除尝试记录（登录成功时调用）"""

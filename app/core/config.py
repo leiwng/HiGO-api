@@ -1,5 +1,4 @@
 # /app/core/config.py
-import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from pathlib import Path
@@ -14,22 +13,34 @@ env_path = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    # --- Project ---
-    PROJECT_NAME: str = "HiGO Pet Medical Chat API"
+    # --- App Info ---
+    PROJECT_NAME: str = "Pet Medical API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    DEBUG: bool = False
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
 
-    # --- Security ---
-    SECRET_KEY: str = "your-secret-key-here"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    ALGORITHM: str = "HS256"
+    # --- Logging ---
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/app.log"
+
+    # --- JWT Security ---
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 1440
+
+    # 为了兼容性，也支持这些字段名
+    SECRET_KEY: str | None = None
+    ALGORITHM: str | None = None
+    ACCESS_TOKEN_EXPIRE_MINUTES: int | None = None
 
     # --- Database ---
-    MONGODB_URL: str = "mongodb://localhost:27017/"
-    MONGODB_DB_NAME: str = "pet_medical_chat"
+    MONGODB_URL: str
+    MONGODB_DB_NAME: str
 
     # --- Redis ---
-    REDIS_URL: str = "redis://localhost:6379"
+    REDIS_URL: str
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ""
@@ -46,17 +57,48 @@ class Settings(BaseSettings):
     # --- Rate Limiting ---
     LOGIN_MAX_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 30
+    RATE_LIMIT_REQUESTS: int = 100
+    RATE_LIMIT_WINDOW: int = 3600
 
     # --- LLM Service ---
-    LLM_API_URL: str = "http://localhost:8001"
-    LLM_API_KEY: str = "your-llm-api-key"
-    LLM_MODEL: str = "gpt-3.5-turbo"
+    OPENAI_BASE_URL: str
+    OPENAI_API_KEY: str
+    LLM_MODEL: str = "ds-vet-answer-32B"
     LLM_MAX_TOKENS: int = 2000
     LLM_TEMPERATURE: float = 0.7
+
+    # --- Multimodal Service ---
+    MULTIMODAL_BASE_URL: str
+    MULTIMODAL_API_KEY: str
+    MULTIMODAL_API_SECRET: str
+    MULTIMODAL_TIMEOUT: int = 30
+
+    # --- Pet Info Service ---
+    PET_INFO_BASE_URL: str
+    PET_INFO_CLIENT_ID: str
+    PET_INFO_CLIENT_SECRET: str
 
     # --- HTTP Client ---
     HTTP_TIMEOUT: int = 30
     HTTP_MAX_RETRIES: int = 3
+
+    # --- File Paths ---
+    BREED_MAP_FILE: str = "data/pet_breed_0dd7f7.json"
+
+    @property
+    def SECRET_KEY_COMPUTED(self) -> str:
+        """兼容性属性：返回JWT_SECRET_KEY"""
+        return self.SECRET_KEY or self.JWT_SECRET_KEY
+
+    @property
+    def ALGORITHM_COMPUTED(self) -> str:
+        """兼容性属性：返回JWT_ALGORITHM"""
+        return self.ALGORITHM or self.JWT_ALGORITHM
+
+    @property
+    def ACCESS_TOKEN_EXPIRE_MINUTES_COMPUTED(self) -> int:
+        """兼容性属性：返回JWT_EXPIRE_MINUTES"""
+        return self.ACCESS_TOKEN_EXPIRE_MINUTES or self.JWT_EXPIRE_MINUTES
 
     class Config:
         # When you run the application, Pydantic will try to read these environment variables.
@@ -65,6 +107,8 @@ class Settings(BaseSettings):
         env_file = env_path
         env_file_encoding = 'utf-8'
         case_sensitive = True
+        # 允许额外的字段
+        extra = "allow"
 
 
 @lru_cache()

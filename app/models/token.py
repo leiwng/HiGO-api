@@ -1,6 +1,5 @@
 # /app/models/token.py
 from pydantic import BaseModel
-from typing import Optional
 
 class Token(BaseModel):
     access_token: str
@@ -8,5 +7,5 @@ class Token(BaseModel):
     expires_in: int
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    username: str
     scopes: list[str] = []

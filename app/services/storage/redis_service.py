@@ -1,12 +1,12 @@
 import asyncio
 import json
-import logging
 from redis.asyncio import Redis, ConnectionPool
 from redis.exceptions import RedisError, ConnectionError
 from app.core.config import settings
+from app.core.logging import get_logger
 from urllib.parse import urlparse
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class RedisService:
     """Redis异步服务类，提供缓存、会话管理、速率限制等功能"""

@@ -1,9 +1,8 @@
 # /app/services/chat_service.py
 import json
 import asyncio
-from datetime import datetime
-from fastapi import Depends, HTTPException
-from loguru import logger
+from datetime import datetime, timezone
+from fastapi import Depends
 
 from app.models.chat import TextChatRequest, ImageChatRequest, StreamChunk, ChatRequest, ChatResponse, ChatMessage
 from app.models.user import User
@@ -12,7 +11,9 @@ from app.services.external.multimodal_service import MultiModalService
 from app.services.external.pet_info_service import PetInfoService
 from app.services.storage.mongo_service import MongoService
 from app.services.storage.redis_service import RedisService
+from app.core.logging import get_logger
 
+logger = get_logger(__name__)
 
 class ChatService:
     def __init__(
@@ -65,7 +66,7 @@ class ChatService:
                     conversation_id=request.conversation_id,
                     text_chunk=content_piece,
                     is_final=False,
-                    timestamp=datetime.utcnow().isoformat()
+                    timestamp=datetime.now(timezone.utc).isoformat()
                 )
                 yield f"data: {stream_chunk.model_dump_json()}\n\n"
                 await asyncio.sleep(0.01) # Small delay to allow client processing
@@ -75,7 +76,7 @@ class ChatService:
                 conversation_id=request.conversation_id,
                 text_chunk="",
                 is_final=True,
-                timestamp=datetime.utcnow().isoformat()
+                timestamp=datetime.now(timezone.utc).isoformat()
             )
             yield f"data: {final_chunk.model_dump_json()}\n\n"
             logger.info(f"Request ID: {request_id} - Finished streaming response for conversation: {request.conversation_id}")
@@ -150,7 +151,7 @@ class ChatService:
                     conversation_id=request.conversation_id,
                     text_chunk=content_piece,
                     is_final=False,
-                    timestamp=datetime.utcnow().isoformat()
+                    timestamp=datetime.now(timezone.utc).isoformat()
                 )
                 yield f"data: {stream_chunk.model_dump_json()}\n\n"
                 await asyncio.sleep(0.01)
@@ -160,7 +161,7 @@ class ChatService:
                 conversation_id=request.conversation_id,
                 text_chunk="",
                 is_final=True,
-                timestamp=datetime.utcnow().isoformat()
+                timestamp=datetime.now(timezone.utc).isoformat()
             )
             yield f"data: {final_chunk.model_dump_json()}\n\n"
             logger.info(f"Request ID: {request_id} - Finished streaming response for conversation: {request.conversation_id}")
@@ -254,7 +255,7 @@ class ChatService:
                 cache_messages.append({
                     "role": msg.get("role"),
                     "content": msg.get("content"),
-                    "timestamp": msg.get("timestamp", datetime.utcnow()).isoformat()
+                    "timestamp": msg.get("timestamp", datetime.now(timezone.utc)).isoformat()
                 })
 
             # 缓存到Redis
@@ -294,7 +295,7 @@ class ChatService:
                 ChatMessage(
                     role=msg["role"],
                     content=msg["content"],
-                    timestamp=msg.get("timestamp", datetime.utcnow()),
+                    timestamp=msg.get("timestamp", datetime.now(timezone.utc)),
                     metadata=msg.get("metadata")
                 )
                 for msg in history

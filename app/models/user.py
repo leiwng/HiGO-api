@@ -1,10 +1,9 @@
 # /app/models/user.py
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Optional
 
 class User(BaseModel):
-    id: str | None = None
+    id: str
     username: str
     email: str | None = None
     is_active: bool = True

@@ -1,6 +1,5 @@
 # /app/models/pet.py
 from pydantic import BaseModel, Field
-from typing import List, Optional
 from datetime import date
 
 class VaccinationRecord(BaseModel):
@@ -18,8 +17,8 @@ class PetInfo(BaseModel):
     breed: str = Field(..., description="品种")
     age: int = Field(..., description="年龄")
     weight: float = Field(..., description="体重 (kg)")
-    vaccination_records: List[VaccinationRecord] = Field([], description="疫苗记录")
-    medical_history: List[MedicalHistory] = Field([], description="医疗历史")
+    vaccination_records: list[VaccinationRecord] = Field([], description="疫苗记录")
+    medical_history: list[MedicalHistory] = Field([], description="医疗历史")
 
 class PetBreed(BaseModel):
     id: int

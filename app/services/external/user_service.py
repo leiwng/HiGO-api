@@ -1,6 +1,6 @@
 import hashlib
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.user import User
 from app.services.storage.mongo_service import MongoService
 from app.utils.password_validator import PasswordValidator
@@ -76,7 +76,7 @@ class UserService:
         password_hash, salt = self.hash_password(password)
 
         # 创建用户文档
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         user_doc = {
             "username": username,
             "email": email,

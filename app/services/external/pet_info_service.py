@@ -2,12 +2,14 @@
 import time
 import hmac
 import hashlib
-from fastapi import Depends, HTTPException
-from loguru import logger
+from fastapi import Depends
 
 from app.core.config import Settings, get_settings
 from app.models.pet import PetInfo
 from app.utils.http_client import AsyncHttpClient
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class PetInfoService:
     def __init__(
@@ -75,12 +77,12 @@ class PetInfoService:
         #             "X-Signature": signature,
         #             "Content-Type": "application/json"
         #         }
-                
+
         #         logger.info(f"Calling Pet Info API: {url} (Attempt {attempt + 1})")
         #         response = await self.http_client.get(url, headers=headers, timeout=5.0)
         #         response.raise_for_status()
         #         data = response.json()
-                
+
         #         logger.info(f"Successfully fetched pet info for {pet_id}")
         #         return PetInfo(**data['data'])
 

@@ -1,15 +1,13 @@
 # /app/core/logging.py
 import sys
+from pathlib import Path
 from loguru import logger
-from .config import settings
+from app.core.config import settings
 
 def setup_logging():
-    """
-    Configures the Loguru logger for the application.
-    """
-    logger.remove()  # Remove default handler
+    """配置 Loguru 日志记录器"""
+    logger.remove()
 
-    # Console logger
     logger.add(
         sys.stdout,
         level=settings.LOG_LEVEL.upper(),
@@ -17,20 +15,32 @@ def setup_logging():
                "<level>{level: <8}</level> | "
                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         colorize=True,
+        backtrace=True,
+        diagnose=True
     )
 
-    # File logger
+    log_file_path = Path(settings.LOG_FILE)
+    log_file_path.parent.mkdir(parents=True, exist_ok=True)
+
     logger.add(
         settings.LOG_FILE,
         level=settings.LOG_LEVEL.upper(),
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        rotation="10 MB",  # Rotates the log file when it reaches 10 MB
-        retention="7 days",  # Keeps logs for 7 days
-        compression="zip",  # Compresses old log files
-        serialize=False,  # Set to True to output JSON logs
-        enqueue=True, # Make logging async-safe
+        rotation="10 MB",
+        retention="7 days",
+        compression="zip",
+        serialize=False,
+        enqueue=True,
         backtrace=True,
         diagnose=True
     )
 
     logger.info("Logger configured successfully.")
+
+def get_logger(name: str | None = None):  # 修复类型注解
+    """获取日志记录器实例"""
+    if name:
+        return logger.bind(name=name)
+    return logger
+
+__all__ = ["setup_logging", "get_logger", "logger"]
